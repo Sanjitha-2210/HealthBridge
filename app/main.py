@@ -8,6 +8,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api import (
+    fhir_router,
+    gateway_router,
     identity_router,
     ingestion_router,
     normalization_router,
@@ -15,6 +17,8 @@ from app.api import (
 )
 from app.core.config import get_settings
 from app.core.errors import (
+    FhirException,
+    GatewayException,
     IdentityException,
     IngestionException,
     NormalizationException,
@@ -138,7 +142,41 @@ def create_application() -> FastAPI:
             },
         )
 
-    # 5. Custom handler for request validation errors (Pydantic / FastAPI 422)
+    # 5. Custom exception handler for domain FHIR bundle assembly exceptions
+    @app.exception_handler(FhirException)
+    async def fhir_exception_handler(request: Request, exc: FhirException) -> JSONResponse:
+        logger.warning(
+            "FHIR assembly error: code=%s, status=%d, message=%s",
+            exc.error_code,
+            exc.status_code,
+            exc.message,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error_code": exc.error_code,
+                "message": exc.message,
+            },
+        )
+
+    # 6. Custom exception handler for domain ABDM security gateway exceptions
+    @app.exception_handler(GatewayException)
+    async def gateway_exception_handler(request: Request, exc: GatewayException) -> JSONResponse:
+        logger.warning(
+            "Gateway security error: code=%s, status=%d, message=%s",
+            exc.error_code,
+            exc.status_code,
+            exc.message,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error_code": exc.error_code,
+                "message": exc.message,
+            },
+        )
+
+    # 7. Custom handler for request validation errors (Pydantic / FastAPI 422)
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         # Provide a safe error message without leaking sensitive payload data
@@ -151,7 +189,7 @@ def create_application() -> FastAPI:
             },
         )
 
-    # 6. Global fallback exception handler ensuring no raw stack traces leak
+    # 8. Global fallback exception handler ensuring no raw stack traces leak
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         logger.error("Unhandled server exception: %s", type(exc).__name__)
@@ -163,7 +201,7 @@ def create_application() -> FastAPI:
             },
         )
 
-    # 7. Health Check Endpoint
+    # 9. Health Check Endpoint
     @app.get(
         "/health",
         tags=["System"],
@@ -180,14 +218,18 @@ def create_application() -> FastAPI:
                 "M2_DATA_NORMALIZATION",
                 "M3_CLINICAL_TERMINOLOGY_MAPPING",
                 "M4_PATIENT_IDENTITY_SAFETY",
+                "M5_FHIR_BUNDLE_ASSEMBLY",
+                "M6_CONSENT_SECURITY_GATEWAY",
             ],
         }
 
-    # 8. Register API Routers
+    # 10. Register API Routers
     app.include_router(ingestion_router, prefix=settings.API_V1_PREFIX)
     app.include_router(normalization_router, prefix=settings.API_V1_PREFIX)
     app.include_router(terminology_router, prefix=settings.API_V1_PREFIX)
     app.include_router(identity_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(fhir_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(gateway_router, prefix=settings.API_V1_PREFIX)
 
 
     return app

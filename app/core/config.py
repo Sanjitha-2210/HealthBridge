@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Authoritative synthetic identity fixture registry path
     SYNTHETIC_IDENTITY_REGISTRY_PATH: str = "data/identity/synthetic_identity_registry.json"
 
+    # M6 Security Gateway configuration (strictly disabled by default; forbidden in production)
+    ALLOW_TEST_SIGNATURES: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
